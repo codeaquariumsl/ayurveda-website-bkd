@@ -1,5 +1,9 @@
 const Booking = require('../models/Booking');
 const ServicePackage = require('../models/ServicePackage');
+const SmsLog = require('../models/SmsLog');
+const EmailLog = require('../models/EmailLog');
+const { sendSMS } = require('../utils/smsService');
+const { sendEmail } = require('../utils/emailService');
 
 // @desc    Get all bookings (Admin only)
 // @route   GET /api/bookings
@@ -69,6 +73,41 @@ const createBooking = async (req, res) => {
         });
 
         const createdBooking = await booking.save();
+
+        const { enableSMS, enableEmail } = req.app.locals.notifications;
+
+        // Send SMS Notification
+        if (enableSMS && createdBooking.patientDetails && createdBooking.patientDetails.phone) {
+            const message = `Hello ${createdBooking.patientName}, your booking for ${createdBooking.packageName} on ${createdBooking.date} at ${createdBooking.timeSlot} has been created successfully. Status: ${createdBooking.status}.`;
+            try {
+                await sendSMS({
+                    bookingId: createdBooking._id,
+                    phone: createdBooking.patientDetails.phone,
+                    message,
+                    type: 'booking_created'
+                });
+            } catch (smsError) {
+                console.error('Failed to send creation SMS:', smsError);
+            }
+        }
+
+        // Send Email Notification
+        if (enableEmail && createdBooking.patientDetails && createdBooking.patientDetails.email) {
+            const subject = 'Booking Confirmation';
+            const message = `Hello ${createdBooking.patientName}, your booking for ${createdBooking.packageName} on ${createdBooking.date} at ${createdBooking.timeSlot} has been created successfully. Status: ${createdBooking.status}.`;
+            try {
+                await sendEmail({
+                    bookingId: createdBooking._id,
+                    email: createdBooking.patientDetails.email,
+                    subject,
+                    message,
+                    type: 'booking_created'
+                });
+            } catch (emailError) {
+                console.error('Failed to send creation Email:', emailError);
+            }
+        }
+
         res.status(201).json(createdBooking);
     } catch (error) {
         res.status(400).json({ message: error.message });
@@ -89,6 +128,41 @@ const updateBooking = async (req, res) => {
 
             Object.assign(booking, req.body);
             const updatedBooking = await booking.save();
+
+            const { enableSMS, enableEmail } = req.app.locals.notifications;
+
+            // Send SMS Notification for updates
+            if (enableSMS && updatedBooking.patientDetails && updatedBooking.patientDetails.phone) {
+                const message = `Hello ${updatedBooking.patientName}, your booking for ${updatedBooking.packageName} has been updated. Date: ${updatedBooking.date}, Time: ${updatedBooking.timeSlot}, Status: ${updatedBooking.status}.`;
+                try {
+                    await sendSMS({
+                        bookingId: updatedBooking._id,
+                        phone: updatedBooking.patientDetails.phone,
+                        message,
+                        type: 'booking_updated'
+                    });
+                } catch (smsError) {
+                    console.error('Failed to send update SMS:', smsError);
+                }
+            }
+
+            // Send Email Notification for updates
+            if (enableEmail && updatedBooking.patientDetails && updatedBooking.patientDetails.email) {
+                const subject = 'Booking Update';
+                const message = `Hello ${updatedBooking.patientName}, your booking for ${updatedBooking.packageName} has been updated. Date: ${updatedBooking.date}, Time: ${updatedBooking.timeSlot}, Status: ${updatedBooking.status}.`;
+                try {
+                    await sendEmail({
+                        bookingId: updatedBooking._id,
+                        email: updatedBooking.patientDetails.email,
+                        subject,
+                        message,
+                        type: 'booking_updated'
+                    });
+                } catch (emailError) {
+                    console.error('Failed to send update Email:', emailError);
+                }
+            }
+
             res.json(updatedBooking);
         } else {
             res.status(404).json({ message: 'Booking not found' });
@@ -166,11 +240,37 @@ const getAvailableSlots = async (req, res) => {
     }
 };
 
+// @desc    Get SMS logs for a booking
+// @route   GET /api/bookings/:id/sms-logs
+// @access  Private/Admin
+const getSmsLogs = async (req, res) => {
+    try {
+        const smsLogs = await SmsLog.find({ bookingId: req.params.id }).sort({ createdAt: -1 });
+        res.json(smsLogs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Get Email logs for a booking
+// @route   GET /api/bookings/:id/email-logs
+// @access  Private/Admin
+const getEmailLogs = async (req, res) => {
+    try {
+        const emailLogs = await EmailLog.find({ bookingId: req.params.id }).sort({ createdAt: -1 });
+        res.json(emailLogs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getBookings,
     getMyBookings,
     getBookingById,
     createBooking,
     updateBooking,
-    getAvailableSlots
+    getAvailableSlots,
+    getSmsLogs,
+    getEmailLogs
 };

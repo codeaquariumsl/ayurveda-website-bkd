@@ -12,6 +12,12 @@ connectDB();
 
 const app = express();
 
+// Notification Configuration
+app.locals.notifications = {
+  enableSMS: process.env.ENABLE_SMS !== 'false',
+  enableEmail: process.env.ENABLE_EMAIL !== 'false'
+};
+
 // Body parser
 app.use(express.json());
 
@@ -22,10 +28,10 @@ app.use(cors());
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
   app.use((req, res, next) => {
-    if (Object.keys(req.query).length > 0) {
+    if (req.query && Object.keys(req.query).length > 0) {
       console.log('Query Params:', req.query);
     }
-    if (req.method !== 'GET' && Object.keys(req.body).length > 0) {
+    if (req.method !== 'GET' && req.body && Object.keys(req.body).length > 0) {
       console.log('Request Body:', req.body);
     }
     next();

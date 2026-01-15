@@ -31,6 +31,7 @@ const protect = async (req, res, next) => {
 };
 
 const admin = (req, res, next) => {
+    console.log("User: ", req.user);
     if (req.user && req.user.role === 'admin') {
         next();
     } else {
