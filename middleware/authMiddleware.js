@@ -18,15 +18,16 @@ const protect = async (req, res, next) => {
             // Get user from the token
             req.user = await User.findById(decoded.id).select('-password');
 
-            next();
+            return next();
         } catch (error) {
-            console.error(error);
-            res.status(401).json({ message: 'Not authorized' });
+            console.error('Token verification failed:', error.message);
+            return res.status(401).json({ message: 'Not authorized' });
         }
     }
 
     if (!token) {
-        res.status(401).json({ message: 'Not authorized, no token' });
+        console.log(`Protected route access attempt without token: ${req.method} ${req.originalUrl}`);
+        return res.status(401).json({ message: 'Not authorized, no token' });
     }
 };
 

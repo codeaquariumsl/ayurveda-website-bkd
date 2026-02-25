@@ -1,4 +1,19 @@
+const nodemailer = require('nodemailer');
 const EmailLog = require('../models/EmailLog');
+
+/**
+ * Configure Nodemailer Transporter
+ */
+const transporter = nodemailer.createTransport({
+    service: process.env.EMAIL_SERVICE,
+    host: process.env.EMAIL_HOST,
+    port: process.env.EMAIL_PORT,
+    secure: process.env.EMAIL_PORT == 465, // true for 465, false for other ports
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+    },
+});
 
 /**
  * Send Email and log the status
@@ -11,11 +26,18 @@ const EmailLog = require('../models/EmailLog');
  */
 const sendEmail = async ({ bookingId, email, subject, message, type }) => {
     try {
-        console.log(`Sending Email to ${email}: [${subject}] ${message}`);
+        console.log(`Sending Email to ${email}: [${subject}]`);
 
-        // Mocking Email provider call (e.g., Nodemailer, SendGrid, etc.)
-        const isSuccess = true;
-        const providerResponse = { mockId: 'email_mock_' + Date.now() };
+        const mailOptions = {
+            from: process.env.EMAIL_FROM,
+            to: email,
+            subject: subject,
+            text: message,
+            html: `<div>${message.replace(/\n/g, '<br>')}</div>`,
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+        console.log('Email sent: ' + info.response);
 
         const emailLog = new EmailLog({
             bookingId,
@@ -23,8 +45,8 @@ const sendEmail = async ({ bookingId, email, subject, message, type }) => {
             subject,
             message,
             type,
-            status: isSuccess ? 'sent' : 'failed',
-            providerResponse
+            status: 'sent',
+            providerResponse: info
         });
 
         await emailLog.save();
@@ -50,3 +72,4 @@ const sendEmail = async ({ bookingId, email, subject, message, type }) => {
 module.exports = {
     sendEmail
 };
+

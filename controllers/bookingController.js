@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Booking = require('../models/Booking');
 const ServicePackage = require('../models/ServicePackage');
 const SmsLog = require('../models/SmsLog');
@@ -54,22 +55,42 @@ const getBookingById = async (req, res) => {
 // @access  Private
 const createBooking = async (req, res) => {
     try {
-        const { packageId, date, timeSlot, notes } = req.body;
+        const { packageId, date, timeSlot, notes, patientDetails } = req.body;
+        let pkgName = '';
+        let finalPackageId = packageId;
 
-        const pkg = await ServicePackage.findById(packageId);
-        if (!pkg) {
-            return res.status(404).json({ message: 'Package not found' });
+        // Handle special case for "consultation" or non-ObjectId strings
+        if (packageId === 'consultation') {
+            pkgName = 'General Consultation';
+            finalPackageId = null; // Or keep it as 'consultation' if the model allows it
+        } else {
+            // Check if packageId is a valid MongoDB ObjectId
+            if (mongoose.Types.ObjectId.isValid(packageId)) {
+                const pkg = await ServicePackage.findById(packageId);
+                if (pkg) {
+                    pkgName = pkg.name;
+                } else {
+                    return res.status(404).json({ message: 'Package not found' });
+                }
+            } else {
+                // If not a valid ID, treat it as a custom package name if provided
+                pkgName = notes?.includes('Book') ? notes.replace('Book ', '') : (packageId || 'General Service');
+                finalPackageId = null;
+            }
         }
 
+        const patientId = req.user ? req.user.patientId : null;
+        const patientName = req.user ? req.user.name : (patientDetails?.name || 'Guest');
+
         const booking = new Booking({
-            patientId: req.user.patientId,
-            patientName: req.user.name,
-            packageId,
-            packageName: pkg.name,
+            patientId,
+            patientName,
+            packageId: finalPackageId,
+            packageName: pkgName,
             date,
             timeSlot,
             notes,
-            patientDetails: req.body.patientDetails || {}
+            patientDetails: patientDetails || {}
         });
 
         const createdBooking = await booking.save();
@@ -92,21 +113,21 @@ const createBooking = async (req, res) => {
         }
 
         // Send Email Notification
-        if (enableEmail && createdBooking.patientDetails && createdBooking.patientDetails.email) {
-            const subject = 'Booking Confirmation';
-            const message = `Hello ${createdBooking.patientName}, your booking for ${createdBooking.packageName} on ${createdBooking.date} at ${createdBooking.timeSlot} has been created successfully. Status: ${createdBooking.status}.`;
-            try {
-                await sendEmail({
-                    bookingId: createdBooking._id,
-                    email: createdBooking.patientDetails.email,
-                    subject,
-                    message,
-                    type: 'booking_created'
-                });
-            } catch (emailError) {
-                console.error('Failed to send creation Email:', emailError);
-            }
-        }
+        // if (enableEmail && createdBooking.patientDetails && createdBooking.patientDetails.email) {
+        //     const subject = 'Booking Confirmation';
+        //     const message = `Hello ${createdBooking.patientName}, your booking for ${createdBooking.packageName} on ${createdBooking.date} at ${createdBooking.timeSlot} has been created successfully. Status: ${createdBooking.status}.`;
+        //     try {
+        //         await sendEmail({
+        //             bookingId: createdBooking._id,
+        //             email: createdBooking.patientDetails.email,
+        //             subject,
+        //             message,
+        //             type: 'booking_created'
+        //         });
+        //     } catch (emailError) {
+        //         console.error('Failed to send creation Email:', emailError);
+        //     }
+        // }
 
         res.status(201).json(createdBooking);
     } catch (error) {
@@ -211,26 +232,27 @@ const getAvailableSlots = async (req, res) => {
                 const timeSlot = `${String(startHour).padStart(2, '0')}:${String(startMinute).padStart(2, '0')}`;
 
                 // Count concurrent bookings that overlap with this time slot
-                const concurrentBookings = bookings.filter((b) => {
-                    const bookingTime = b.timeSlot || "";
-                    if (!bookingTime) return false;
+                // const concurrentBookings = bookings.filter((b) => {
+                //     const bookingTime = b.timeSlot || "";
+                //     if (!bookingTime) return false;
 
-                    const bookingParts = bookingTime.split(':');
-                    const bookingHour = parseInt(bookingParts[0]);
-                    const bookingMinute = parseInt(bookingParts[1]);
-                    const bookingEndMinute = bookingMinute + durationInMinutes;
-                    // Simplified overlap check
-                    const slotStartTime = startHour * 60 + startMinute;
-                    const slotEndTime = endHour * 60 + adjustedEndMinute;
-                    const bookingStartTime = bookingHour * 60 + bookingMinute;
-                    const bookingEndTime = bookingHour * 60 + bookingEndMinute;
+                //     const bookingParts = bookingTime.split(':');
+                //     const bookingHour = parseInt(bookingParts[0]);
+                //     const bookingMinute = parseInt(bookingParts[1]);
+                //     const bookingEndMinute = bookingMinute + durationInMinutes;
+                //     // Simplified overlap check
+                //     const slotStartTime = startHour * 60 + startMinute;
+                //     const slotEndTime = endHour * 60 + adjustedEndMinute;
+                //     const bookingStartTime = bookingHour * 60 + bookingMinute;
+                //     const bookingEndTime = bookingHour * 60 + bookingEndMinute;
 
-                    return !(slotEndTime <= bookingStartTime || slotStartTime >= bookingEndTime);
-                }).length;
+                //     return !(slotEndTime <= bookingStartTime || slotStartTime >= bookingEndTime);
+                // }).length;
 
-                if (concurrentBookings < concurrentSlots) {
-                    timeSlots.push(timeSlot);
-                }
+                // if (concurrentBookings < concurrentSlots) {
+                //     timeSlots.push(timeSlot);
+                // }
+                timeSlots.push(timeSlot);
             }
         }
 

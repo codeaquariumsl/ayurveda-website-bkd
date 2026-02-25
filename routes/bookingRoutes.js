@@ -12,9 +12,8 @@ const {
 } = require('../controllers/bookingController');
 const { protect, admin } = require('../middleware/authMiddleware');
 
-router.route('/')
-    .get(protect, admin, getBookings)
-    .post(protect, createBooking);
+router.get('/', protect, admin, getBookings);
+router.post('/', createBooking);
 
 router.get('/mybookings', protect, getMyBookings);
 router.get('/available-slots', getAvailableSlots);

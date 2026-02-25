@@ -3,14 +3,12 @@ const mongoose = require('mongoose');
 const BookingSchema = new mongoose.Schema({
     patientId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Patient',
-        required: true
+        ref: 'Patient'
     },
     patientName: String,
     packageId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'ServicePackage',
-        required: true
+        ref: 'ServicePackage'
     },
     packageName: String,
     date: {
