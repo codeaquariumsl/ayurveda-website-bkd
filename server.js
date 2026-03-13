@@ -38,11 +38,18 @@ if (process.env.NODE_ENV === 'development') {
   });
 }
 
+const path = require('path');
+
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/packages', require('./routes/packageRoutes'));
+app.use('/api/treatments', require('./routes/treatmentRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
+app.use('/api/upload', require('./routes/uploadRoutes'));
+
+// Serve static uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.get('/', (req, res) => {
   res.send('API is running...');
