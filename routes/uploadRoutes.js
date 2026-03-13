@@ -23,11 +23,11 @@ if (!fs.existsSync(treatmentUploadPath)) {
 const storage = multer.diskStorage({
     destination(req, file, cb) {
         if (req.params.type === 'package') {
-            cb(null, 'uploads/package/');
+            cb(null, packageUploadPath);
         } else if (req.params.type === 'treatment') {
-            cb(null, 'uploads/treatment/');
+            cb(null, treatmentUploadPath);
         } else {
-            cb(null, 'uploads/product/');
+            cb(null, productUploadPath);
         }
     },
     filename(req, file, cb) {
@@ -60,9 +60,12 @@ router.post('/:type', upload.single('image'), (req, res) => {
             return res.status(400).send('No image uploaded');
         }
         
-        let filePath = req.file.path.replace(/\\/g, '/');
-        // e.g. uploads/product/image-12345.jpg
-        return res.status(200).json({ url: `/${filePath}` });
+        let subfolder = 'product';
+        if (req.params.type === 'package') subfolder = 'package';
+        else if (req.params.type === 'treatment') subfolder = 'treatment';
+
+        // Construct the URL manually to avoid absolute path leak from req.file.path
+        return res.status(200).json({ url: `/uploads/${subfolder}/${req.file.filename}` });
     } catch (error) {
         console.error(error);
         res.status(500).send('Server Error');
