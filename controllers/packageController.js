@@ -5,7 +5,7 @@ const ServicePackage = require('../models/ServicePackage');
 // @access  Public
 const getPackages = async (req, res) => {
     try {
-        const packages = await ServicePackage.find({});
+        const packages = await ServicePackage.find({}).sort({ index: 1 });
         res.json(packages);
     } catch (error) {
         res.status(500).json({ message: error.message });
