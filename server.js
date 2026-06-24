@@ -8,7 +8,32 @@ const morgan = require('morgan');
 dotenv.config();
 
 // Connect to database
-connectDB();
+connectDB().then(() => {
+  // Seed default subcategories if none exist
+  const seedDefaultSubcategories = async () => {
+    try {
+      const Subcategory = require('./models/Subcategory');
+      const count = await Subcategory.countDocuments();
+      if (count === 0) {
+        console.log('Seeding default subcategories...');
+        const defaultSubcategories = [
+          { name: 'Head & Hair', slug: 'head-hair' },
+          { name: 'Body & Skin', slug: 'body-skin' },
+          { name: 'Facial', slug: 'facial' },
+          { name: 'Foot', slug: 'foot' },
+          { name: 'Full Day', slug: 'full-day' },
+          { name: 'Half Day', slug: 'half-day' },
+          { name: '7 Day', slug: '7-day' }
+        ];
+        await Subcategory.insertMany(defaultSubcategories);
+        console.log('Seeding default subcategories completed.');
+      }
+    } catch (err) {
+      console.error('Error seeding default subcategories:', err);
+    }
+  };
+  seedDefaultSubcategories();
+});
 
 const app = express();
 
@@ -44,6 +69,7 @@ const path = require('path');
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/products', require('./routes/productRoutes'));
 app.use('/api/packages', require('./routes/packageRoutes'));
+app.use('/api/subcategories', require('./routes/subcategoryRoutes'));
 app.use('/api/treatments', require('./routes/treatmentRoutes'));
 app.use('/api/bookings', require('./routes/bookingRoutes'));
 app.use('/api/upload', require('./routes/uploadRoutes'));
