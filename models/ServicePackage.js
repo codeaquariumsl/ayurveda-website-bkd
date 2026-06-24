@@ -15,8 +15,7 @@ const ServicePackageSchema = new mongoose.Schema({
         required: true
     },
     subcategory: {
-        type: String,
-        enum: ['head-hair', 'body-skin', 'facial', 'foot', 'full-day', 'half-day', '7-day']
+        type: String
     },
     description: String,
     includes: [String],
