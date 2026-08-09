@@ -40,7 +40,8 @@ const app = express();
 // Notification Configuration
 app.locals.notifications = {
   enableSMS: process.env.ENABLE_SMS !== 'false',
-  enableEmail: process.env.ENABLE_EMAIL !== 'false'
+  enableEmail: process.env.ENABLE_EMAIL !== 'false',
+  enableWhatsApp: process.env.ENABLE_WHATSAPP !== 'false'
 };
 
 // Body parser

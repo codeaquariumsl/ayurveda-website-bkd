@@ -3,8 +3,10 @@ const Booking = require('../models/Booking');
 const ServicePackage = require('../models/ServicePackage');
 const SmsLog = require('../models/SmsLog');
 const EmailLog = require('../models/EmailLog');
+const WhatsappLog = require('../models/WhatsappLog');
 const { sendSMS } = require('../utils/smsService');
 const { sendEmail } = require('../utils/emailService');
+const { sendWhatsApp } = require('../utils/whatsappService');
 
 // @desc    Get all bookings (Admin only)
 // @route   GET /api/bookings
@@ -95,7 +97,7 @@ const createBooking = async (req, res) => {
 
         const createdBooking = await booking.save();
 
-        const { enableSMS, enableEmail } = req.app.locals.notifications;
+        const { enableSMS, enableEmail, enableWhatsApp } = req.app.locals.notifications || {};
 
         // Send SMS Notification
         if (enableSMS && createdBooking.patientDetails && createdBooking.patientDetails.phone) {
@@ -128,6 +130,49 @@ const createBooking = async (req, res) => {
         //         console.error('Failed to send creation Email:', emailError);
         //     }
         // }
+
+        // Send WhatsApp Notification to Owner & Patient/Client
+        const isWhatsAppEnabled = enableWhatsApp !== undefined ? enableWhatsApp : (process.env.ENABLE_WHATSAPP !== 'false');
+        if (isWhatsAppEnabled) {
+            // 1. Send to Owner
+            const ownerPhone = process.env.OWNER_WHATSAPP_NUMBER;
+            const waMessage = `🚨 *New Booking Alert!*\n\n` +
+                `*Booking ID:* ${createdBooking._id}\n` +
+                `*Patient Name:* ${createdBooking.patientName}\n` +
+                `*Phone:* ${createdBooking.patientDetails?.phone || 'N/A'}\n` +
+                `*Email:* ${createdBooking.patientDetails?.email || 'N/A'}\n` +
+                `*Service/Package:* ${createdBooking.packageName}\n` +
+                `*Date:* ${createdBooking.date}\n` +
+                `*Time Slot:* ${createdBooking.timeSlot}\n` +
+                `*Status:* ${createdBooking.status}\n` +
+                `*Notes:* ${createdBooking.notes || 'None'}`;
+
+            try {
+                await sendWhatsApp({
+                    bookingId: createdBooking._id,
+                    phone: ownerPhone,
+                    message: waMessage,
+                    type: 'booking_created'
+                });
+            } catch (waError) {
+                console.error('Failed to send creation WhatsApp message to owner:', waError);
+            }
+
+            // 2. Send to Patient/Client if phone is provided
+            if (createdBooking.patientDetails && createdBooking.patientDetails.phone) {
+                const clientMessage = `Hello ${createdBooking.patientName}, your booking for ${createdBooking.packageName} on ${createdBooking.date} at ${createdBooking.timeSlot} has been created successfully. Status: ${createdBooking.status}. Thank you for choosing Siddhaka Ayurveda!`;
+                try {
+                    await sendWhatsApp({
+                        bookingId: createdBooking._id,
+                        phone: createdBooking.patientDetails.phone,
+                        message: clientMessage,
+                        type: 'booking_created'
+                    });
+                } catch (waClientError) {
+                    console.error('Failed to send creation WhatsApp message to client:', waClientError);
+                }
+            }
+        }
 
         res.status(201).json(createdBooking);
     } catch (error) {
@@ -181,6 +226,25 @@ const updateBooking = async (req, res) => {
                     });
                 } catch (emailError) {
                     console.error('Failed to send update Email:', emailError);
+                }
+            }
+
+            // Send WhatsApp Notification for updates
+            const isWhatsAppEnabled = req.app.locals.notifications?.enableWhatsApp !== undefined
+                ? req.app.locals.notifications.enableWhatsApp
+                : (process.env.ENABLE_WHATSAPP !== 'false');
+
+            if (isWhatsAppEnabled && updatedBooking.patientDetails && updatedBooking.patientDetails.phone) {
+                const message = `Hello ${updatedBooking.patientName}, your booking for ${updatedBooking.packageName} has been updated. Date: ${updatedBooking.date}, Time: ${updatedBooking.timeSlot}, Status: ${updatedBooking.status}.`;
+                try {
+                    await sendWhatsApp({
+                        bookingId: updatedBooking._id,
+                        phone: updatedBooking.patientDetails.phone,
+                        message,
+                        type: 'booking_updated'
+                    });
+                } catch (waUpdateError) {
+                    console.error('Failed to send update WhatsApp message:', waUpdateError);
                 }
             }
 
@@ -286,6 +350,102 @@ const getEmailLogs = async (req, res) => {
     }
 };
 
+// @desc    Get WhatsApp logs for a booking
+// @route   GET /api/bookings/:id/whatsapp-logs
+// @access  Private/Admin
+const getWhatsappLogs = async (req, res) => {
+    try {
+        const whatsappLogs = await WhatsappLog.find({ bookingId: req.params.id }).sort({ createdAt: -1 });
+        res.json(whatsappLogs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Get all notification logs (SMS, WhatsApp, Email)
+// @route   GET /api/bookings/notification-logs/all
+// @access  Private/Admin
+const getAllNotificationLogs = async (req, res) => {
+    try {
+        const [smsLogs, emailLogs, whatsappLogs] = await Promise.all([
+            SmsLog.find({}).populate('bookingId', 'patientName packageName date timeSlot').sort({ createdAt: -1 }),
+            EmailLog.find({}).populate('bookingId', 'patientName packageName date timeSlot').sort({ createdAt: -1 }),
+            WhatsappLog.find({}).populate('bookingId', 'patientName packageName date timeSlot').sort({ createdAt: -1 })
+        ]);
+
+        const formattedSms = smsLogs.map(log => ({
+            _id: log._id,
+            channel: 'SMS',
+            bookingId: log.bookingId?._id || log.bookingId,
+            patientName: log.bookingId?.patientName || 'N/A',
+            packageName: log.bookingId?.packageName || 'N/A',
+            recipient: log.patientPhone,
+            message: log.message,
+            type: log.type,
+            status: log.status,
+            providerResponse: log.providerResponse,
+            createdAt: log.createdAt
+        }));
+
+        const formattedEmail = emailLogs.map(log => ({
+            _id: log._id,
+            channel: 'Email',
+            bookingId: log.bookingId?._id || log.bookingId,
+            patientName: log.bookingId?.patientName || 'N/A',
+            packageName: log.bookingId?.packageName || 'N/A',
+            recipient: log.patientEmail,
+            message: log.message,
+            type: log.type,
+            status: log.status,
+            providerResponse: log.providerResponse,
+            createdAt: log.createdAt
+        }));
+
+        const formattedWhatsapp = whatsappLogs.map(log => ({
+            _id: log._id,
+            channel: 'WhatsApp',
+            bookingId: log.bookingId?._id || log.bookingId,
+            patientName: log.bookingId?.patientName || 'N/A',
+            packageName: log.bookingId?.packageName || 'N/A',
+            recipient: log.recipientPhone,
+            message: log.message,
+            type: log.type,
+            status: log.status,
+            providerResponse: log.providerResponse,
+            createdAt: log.createdAt
+        }));
+
+        const allLogs = [...formattedSms, ...formattedEmail, ...formattedWhatsapp].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        res.json(allLogs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
+// @desc    Get all notification logs for a specific booking
+// @route   GET /api/bookings/:id/all-notification-logs
+// @access  Private/Admin
+const getBookingNotificationLogs = async (req, res) => {
+    try {
+        const [smsLogs, emailLogs, whatsappLogs] = await Promise.all([
+            SmsLog.find({ bookingId: req.params.id }).sort({ createdAt: -1 }),
+            EmailLog.find({ bookingId: req.params.id }).sort({ createdAt: -1 }),
+            WhatsappLog.find({ bookingId: req.params.id }).sort({ createdAt: -1 })
+        ]);
+
+        const formattedSms = smsLogs.map(log => ({ ...log._doc, channel: 'SMS', recipient: log.patientPhone }));
+        const formattedEmail = emailLogs.map(log => ({ ...log._doc, channel: 'Email', recipient: log.patientEmail }));
+        const formattedWhatsapp = whatsappLogs.map(log => ({ ...log._doc, channel: 'WhatsApp', recipient: log.recipientPhone }));
+
+        const allLogs = [...formattedSms, ...formattedEmail, ...formattedWhatsapp].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+        res.json(allLogs);
+    } catch (error) {
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getBookings,
     getMyBookings,
@@ -294,5 +454,8 @@ module.exports = {
     updateBooking,
     getAvailableSlots,
     getSmsLogs,
-    getEmailLogs
+    getEmailLogs,
+    getWhatsappLogs,
+    getAllNotificationLogs,
+    getBookingNotificationLogs
 };
