@@ -1,11 +1,14 @@
+const path = require('path');
+const dotenv = require('dotenv');
+
+// Explicitly load .env from the backend directory to ensure PM2 loads it regardless of cwd
+dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config();
+
 const express = require('express');
 const cors = require('cors');
-const dotenv = require('dotenv');
 const connectDB = require('./config/db');
 const morgan = require('morgan');
-
-// Load env vars
-dotenv.config();
 
 // Connect to database
 connectDB().then(() => {
@@ -64,8 +67,6 @@ if (process.env.NODE_ENV === 'development') {
     next();
   });
 }
-
-const path = require('path');
 
 // Routes
 app.use('/api/auth', require('./routes/authRoutes'));

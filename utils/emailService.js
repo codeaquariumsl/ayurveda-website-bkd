@@ -1,12 +1,25 @@
 const nodemailer = require('nodemailer');
+const path = require('path');
+const dotenv = require('dotenv');
 const EmailLog = require('../models/EmailLog');
+
+// Ensure .env is loaded from the backend root directory
+dotenv.config({ path: path.join(__dirname, '../.env') });
+dotenv.config();
 
 /**
  * Create Nodemailer Transporter with Brevo SMTP dynamically
  */
 const getTransporter = () => {
-    const user = process.env.SMTP_USER || process.env.EMAIL_USER;
-    const pass = process.env.SMTP_PASSWORD || process.env.EMAIL_PASS;
+    let user = process.env.SMTP_USER || process.env.EMAIL_USER;
+    let pass = process.env.SMTP_PASSWORD || process.env.EMAIL_PASS;
+
+    // Retry loading .env if undefined
+    if (!user || !pass) {
+        dotenv.config({ path: path.join(__dirname, '../.env') });
+        user = process.env.SMTP_USER || process.env.EMAIL_USER;
+        pass = process.env.SMTP_PASSWORD || process.env.EMAIL_PASS;
+    }
 
     if (!user || !pass) {
         throw new Error('Missing SMTP credentials: SMTP_USER and SMTP_PASSWORD must be defined in the server .env file.');
