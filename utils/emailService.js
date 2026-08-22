@@ -2,17 +2,26 @@ const nodemailer = require('nodemailer');
 const EmailLog = require('../models/EmailLog');
 
 /**
- * Configure Nodemailer Transporter with Brevo SMTP
+ * Create Nodemailer Transporter with Brevo SMTP dynamically
  */
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
-    port: Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || 587),
-    secure: false, // Brevo uses port 587 with STARTTLS (secure: false)
-    auth: {
-        user: process.env.SMTP_USER || process.env.EMAIL_USER,
-        pass: process.env.SMTP_PASSWORD || process.env.EMAIL_PASS
+const getTransporter = () => {
+    const user = process.env.SMTP_USER || process.env.EMAIL_USER;
+    const pass = process.env.SMTP_PASSWORD || process.env.EMAIL_PASS;
+
+    if (!user || !pass) {
+        throw new Error('Missing SMTP credentials: SMTP_USER and SMTP_PASSWORD must be defined in the server .env file.');
     }
-});
+
+    return nodemailer.createTransport({
+        host: process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
+        port: Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || 587),
+        secure: false, // Brevo uses port 587 with STARTTLS (secure: false)
+        auth: {
+            user,
+            pass
+        }
+    });
+};
 
 /**
  * Send Email using Brevo SMTP
@@ -57,6 +66,7 @@ async function sendEmail(targetOrOptions, maybeSubject, maybeHtml) {
             html
         };
 
+        const transporter = getTransporter();
         const info = await transporter.sendMail(mailOptions);
         console.log('[Brevo SMTP] Email sent successfully:', info.messageId || info.response);
 
@@ -101,6 +111,9 @@ async function sendEmail(targetOrOptions, maybeSubject, maybeHtml) {
 }
 
 module.exports = {
-    transporter,
-    sendEmail
+    getTransporter,
+    sendEmail,
+    get transporter() {
+        return getTransporter();
+    }
 };
