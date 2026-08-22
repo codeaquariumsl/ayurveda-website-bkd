@@ -4,7 +4,7 @@ const EmailLogSchema = new mongoose.Schema({
     bookingId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Booking',
-        required: true
+        required: false
     },
     patientEmail: {
         type: String,

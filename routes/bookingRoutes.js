@@ -11,9 +11,12 @@ const {
     getEmailLogs,
     getWhatsappLogs,
     getAllNotificationLogs,
-    getBookingNotificationLogs
+    getBookingNotificationLogs,
+    testSendEmail
 } = require('../controllers/bookingController');
 const { protect, admin } = require('../middleware/authMiddleware');
+
+router.post('/test-email', testSendEmail);
 
 router.get('/', protect, admin, getBookings);
 router.post('/', createBooking);

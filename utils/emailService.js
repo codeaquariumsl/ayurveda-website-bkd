@@ -2,74 +2,105 @@ const nodemailer = require('nodemailer');
 const EmailLog = require('../models/EmailLog');
 
 /**
- * Configure Nodemailer Transporter
+ * Configure Nodemailer Transporter with Brevo SMTP
  */
 const transporter = nodemailer.createTransport({
-    service: process.env.EMAIL_SERVICE,
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: process.env.EMAIL_PORT == 465, // true for 465, false for other ports
+    host: process.env.SMTP_HOST || process.env.EMAIL_HOST || 'smtp-relay.brevo.com',
+    port: Number(process.env.SMTP_PORT || process.env.EMAIL_PORT || 587),
+    secure: false, // Brevo uses port 587 with STARTTLS (secure: false)
     auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-    },
+        user: process.env.SMTP_USER || process.env.EMAIL_USER,
+        pass: process.env.SMTP_PASSWORD || process.env.EMAIL_PASS
+    }
 });
 
 /**
- * Send Email and log the status
- * @param {Object} options 
- * @param {string} options.bookingId
- * @param {string} options.email
- * @param {string} options.subject
- * @param {string} options.message
- * @param {string} options.type
+ * Send Email using Brevo SMTP
+ * Supports both function signatures:
+ *  1. sendEmail(to, subject, html)
+ *  2. sendEmail({ bookingId, email, to, subject, html, message, type })
  */
-const sendEmail = async ({ bookingId, email, subject, message, type }) => {
+async function sendEmail(targetOrOptions, maybeSubject, maybeHtml) {
+    let to;
+    let subject;
+    let html;
+    let text;
+    let bookingId = null;
+    let type = 'general';
+
+    if (typeof targetOrOptions === 'object' && targetOrOptions !== null) {
+        // Object options pattern
+        to = targetOrOptions.to || targetOrOptions.email || targetOrOptions.patientEmail;
+        subject = targetOrOptions.subject;
+        html = targetOrOptions.html || (targetOrOptions.message ? `<div>${targetOrOptions.message.replace(/\n/g, '<br>')}</div>` : '');
+        text = targetOrOptions.message || targetOrOptions.text || '';
+        bookingId = targetOrOptions.bookingId || null;
+        type = targetOrOptions.type || 'general';
+    } else {
+        // Positional arguments: sendEmail(to, subject, html)
+        to = targetOrOptions;
+        subject = maybeSubject;
+        html = maybeHtml;
+        text = typeof maybeHtml === 'string' ? maybeHtml.replace(/<[^>]+>/g, ' ') : '';
+    }
+
+    const fromAddress = process.env.MAIL_FROM || process.env.EMAIL_FROM || 'Siddhaka Ayurveda <no-reply@siddhaka.com>';
+
     try {
-        console.log(`Sending Email to ${email}: [${subject}]`);
+        console.log(`[Brevo SMTP] Sending Email to ${to}: [${subject}]`);
 
         const mailOptions = {
-            from: process.env.EMAIL_FROM,
-            to: email,
-            subject: subject,
-            text: message,
-            html: `<div>${message.replace(/\n/g, '<br>')}</div>`,
+            from: fromAddress,
+            to,
+            subject,
+            text,
+            html
         };
 
         const info = await transporter.sendMail(mailOptions);
-        console.log('Email sent: ' + info.response);
+        console.log('[Brevo SMTP] Email sent successfully:', info.messageId || info.response);
 
-        const emailLog = new EmailLog({
-            bookingId,
-            patientEmail: email,
-            subject,
-            message,
-            type,
-            status: 'sent',
-            providerResponse: info
-        });
+        // Optionally record in EmailLog if Mongoose is connected
+        try {
+            const emailLog = new EmailLog({
+                bookingId: bookingId || undefined,
+                patientEmail: to,
+                subject,
+                message: text || html,
+                type: ['booking_created', 'booking_updated', 'booking_cancelled', 'booking_confirmed'].includes(type) ? type : 'booking_created',
+                status: 'sent',
+                providerResponse: info
+            });
+            await emailLog.save();
+        } catch (logErr) {
+            // Logging failure should not disrupt email execution
+            console.warn('[Brevo SMTP] Could not save email log:', logErr.message);
+        }
 
-        await emailLog.save();
-        return emailLog;
+        return info;
     } catch (error) {
-        console.error('Email Sending Error:', error);
+        console.error('[Brevo SMTP] Email Sending Error:', error);
 
-        const emailLog = new EmailLog({
-            bookingId,
-            patientEmail: email,
-            subject,
-            message,
-            type,
-            status: 'failed',
-            providerResponse: { error: error.message }
-        });
+        try {
+            const emailLog = new EmailLog({
+                bookingId: bookingId || undefined,
+                patientEmail: to,
+                subject,
+                message: text || html || '',
+                type: ['booking_created', 'booking_updated', 'booking_cancelled', 'booking_confirmed'].includes(type) ? type : 'booking_created',
+                status: 'failed',
+                providerResponse: { error: error.message }
+            });
+            await emailLog.save();
+        } catch (logErr) {
+            console.warn('[Brevo SMTP] Could not save failed email log:', logErr.message);
+        }
 
-        await emailLog.save();
         throw error;
     }
-};
+}
 
 module.exports = {
+    transporter,
     sendEmail
 };
-
